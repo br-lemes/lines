@@ -28,41 +28,41 @@ type Analyzer struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "lines [file]",
+	Use:   "lines [file...]",
 	Short: "Check file lines that exceed a specific width",
 	Long: `Check file lines that exceed a specific width
 
 Arguments:
-  [file]   The path to the source file to analyze (optional if using stdin)`,
-	Args: cobra.MaximumNArgs(1),
+  [file...]   The paths to the source files to analyze (optional if using stdin)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var content []byte
-		var err error
+		analyzer := NewAnalyzer(columns, skipSignatures, tabWidth)
 
-		if len(args) == 1 {
-			content, err = os.ReadFile(args[0])
-			if err != nil {
-				return err
-			}
-		} else {
-			if cmd.InOrStdin() == os.Stdin {
-				stat, err := os.Stdin.Stat()
+		if len(args) > 0 {
+			for _, filePath := range args {
+				err := analyzer.ProcessFile(filePath, cmd.OutOrStdout())
 				if err != nil {
 					return err
 				}
-
-				if (stat.Mode() & os.ModeCharDevice) != 0 {
-					return errors.New("missing file argument or piped input")
-				}
 			}
+			return nil
+		}
 
-			content, err = io.ReadAll(cmd.InOrStdin())
+		if cmd.InOrStdin() == os.Stdin {
+			stat, err := os.Stdin.Stat()
 			if err != nil {
 				return err
 			}
+
+			if (stat.Mode() & os.ModeCharDevice) != 0 {
+				return errors.New("missing file argument or piped input")
+			}
 		}
 
-		analyzer := NewAnalyzer(columns, skipSignatures, tabWidth)
+		content, err := io.ReadAll(cmd.InOrStdin())
+		if err != nil {
+			return err
+		}
+
 		err = analyzer.Process(content, cmd.OutOrStdout())
 		if err != nil {
 			return err
@@ -131,6 +131,27 @@ func (a *Analyzer) analyzeGoSignatures(content []byte, ignoredLines map[int]bool
 		}
 		return true
 	})
+
+	return nil
+}
+
+func (a *Analyzer) ProcessFile(filePath string, out io.Writer) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+	err = a.Process(content, buf)
+	if err != nil {
+		return err
+	}
+
+	if buf.Len() > 0 {
+		fmt.Fprintf(out, "%s:\n", filePath)
+		out.Write(buf.Bytes())
+		fmt.Fprintln(out)
+	}
 
 	return nil
 }
