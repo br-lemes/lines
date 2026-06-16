@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -19,6 +20,12 @@ var (
 	skipSignatures bool
 	tabWidth       int
 )
+
+type Analyzer struct {
+	columns        int
+	skipSignatures bool
+	tabWidth       int
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "lines [file]",
@@ -55,71 +62,8 @@ Arguments:
 			}
 		}
 
-		ignoredLines := map[int]bool{}
-
-		if skipSignatures {
-			fileSet := token.NewFileSet()
-			node, err := parser.
-				ParseFile(fileSet, "", content, parser.ParseComments)
-			if err != nil {
-				return err
-			}
-
-			ast.Inspect(node, func(n ast.Node) bool {
-				switch x := n.(type) {
-				case *ast.FuncDecl:
-					startLine := fileSet.Position(x.Pos()).Line
-					endLine := fileSet.Position(x.Type.End()).Line
-					for i := startLine; i <= endLine; i++ {
-						ignoredLines[i] = true
-					}
-				case *ast.FuncLit:
-					startLine := fileSet.Position(x.Pos()).Line
-					endLine := fileSet.Position(x.Type.End()).Line
-					for i := startLine; i <= endLine; i++ {
-						ignoredLines[i] = true
-					}
-				case *ast.Field:
-					_, isFunc := x.Type.(*ast.FuncType)
-					if isFunc {
-						startLine := fileSet.Position(x.Pos()).Line
-						endLine := fileSet.Position(x.End()).Line
-						for i := startLine; i <= endLine; i++ {
-							ignoredLines[i] = true
-						}
-					}
-				}
-				return true
-			})
-		}
-
-		reader := bytes.NewReader(content)
-		scanner := bufio.NewScanner(reader)
-		lineNumber := 0
-
-		for scanner.Scan() {
-			lineNumber++
-			line := scanner.Text()
-
-			if ignoredLines[lineNumber] {
-				continue
-			}
-
-			lineWidth := 0
-			for _, char := range line {
-				if char == '\t' {
-					lineWidth += tabWidth
-				} else {
-					lineWidth++
-				}
-			}
-
-			if lineWidth > columns {
-				cmd.Printf("%d: %s\n", lineNumber, line)
-			}
-		}
-
-		err = scanner.Err()
+		analyzer := NewAnalyzer(columns, skipSignatures, tabWidth)
+		err = analyzer.Process(content, cmd.OutOrStdout())
 		if err != nil {
 			return err
 		}
@@ -144,4 +88,93 @@ func init() {
 		"visual width of a tab character")
 	rootCmd.Flags().BoolVarP(&skipSignatures, "skip-signatures", "s", true,
 		"skip function signatures")
+}
+
+func NewAnalyzer(cols int, skipSig bool, tabW int) *Analyzer {
+	return &Analyzer{
+		columns:        cols,
+		skipSignatures: skipSig,
+		tabWidth:       tabW,
+	}
+}
+
+func (a *Analyzer) analyzeGoSignatures(content []byte, ignoredLines map[int]bool) error {
+	fileSet := token.NewFileSet()
+	node, err := parser.ParseFile(fileSet, "", content, parser.ParseComments)
+	if err != nil {
+		return err
+	}
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.FuncDecl:
+			startLine := fileSet.Position(x.Pos()).Line
+			endLine := fileSet.Position(x.Type.End()).Line
+			for i := startLine; i <= endLine; i++ {
+				ignoredLines[i] = true
+			}
+		case *ast.FuncLit:
+			startLine := fileSet.Position(x.Pos()).Line
+			endLine := fileSet.Position(x.Type.End()).Line
+			for i := startLine; i <= endLine; i++ {
+				ignoredLines[i] = true
+			}
+		case *ast.Field:
+			_, isFunc := x.Type.(*ast.FuncType)
+			if isFunc {
+				startLine := fileSet.Position(x.Pos()).Line
+				endLine := fileSet.Position(x.End()).Line
+				for i := startLine; i <= endLine; i++ {
+					ignoredLines[i] = true
+				}
+			}
+		}
+		return true
+	})
+
+	return nil
+}
+
+func (a *Analyzer) Process(content []byte, out io.Writer) error {
+	ignoredLines := map[int]bool{}
+
+	if a.skipSignatures {
+		err := a.analyzeGoSignatures(content, ignoredLines)
+		if err != nil {
+			return err
+		}
+	}
+
+	reader := bytes.NewReader(content)
+	scanner := bufio.NewScanner(reader)
+	lineNumber := 0
+
+	for scanner.Scan() {
+		lineNumber++
+		line := scanner.Text()
+
+		if ignoredLines[lineNumber] {
+			continue
+		}
+
+		lineWidth := 0
+		for _, char := range line {
+			if char == '\t' {
+				lineWidth += a.tabWidth
+			} else {
+				lineWidth++
+			}
+		}
+
+		if lineWidth > a.columns {
+			fmt.Fprintf(out, "%d: %s\n", lineNumber, line)
+		}
+	}
+
+	err := scanner.Err()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
