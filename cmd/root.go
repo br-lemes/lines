@@ -18,12 +18,14 @@ import (
 
 var (
 	columns        int
+	hidden         bool
 	skipSignatures bool
 	tabWidth       int
 )
 
 type Analyzer struct {
 	columns        int
+	hidden         bool
 	skipSignatures bool
 	tabWidth       int
 }
@@ -42,7 +44,7 @@ var rootCmd = &cobra.Command{
 Arguments:
   [file...]   The paths to the source files or directories`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		analyzer := NewAnalyzer(columns, skipSignatures, tabWidth)
+		analyzer := NewAnalyzer(columns, hidden, skipSignatures, tabWidth)
 
 		if len(args) > 0 {
 			for _, filePath := range args {
@@ -106,11 +108,14 @@ func init() {
 		"visual width of a tab character")
 	rootCmd.Flags().BoolVarP(&skipSignatures, "skip-signatures", "s", true,
 		"skip function signatures")
+	rootCmd.Flags().BoolVarP(&hidden, "hidden", "H", false,
+		"include hidden files and directories")
 }
 
-func NewAnalyzer(cols int, skipSig bool, tabW int) *Analyzer {
+func NewAnalyzer(cols int, hid bool, skipSig bool, tabW int) *Analyzer {
 	return &Analyzer{
 		columns:        cols,
+		hidden:         hid,
 		skipSignatures: skipSig,
 		tabWidth:       tabW,
 	}
@@ -128,6 +133,18 @@ func (a *Analyzer) ProcessDir(dirPath string, out io.Writer) error {
 	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+
+		name := d.Name()
+		if a.hidden == false {
+			if len(name) > 1 {
+				if name[0] == '.' {
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
 		}
 
 		if d.IsDir() == false {
