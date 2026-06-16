@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/br-lemes/lines/internal/version"
 	"github.com/spf13/cobra"
@@ -27,19 +28,35 @@ type Analyzer struct {
 	tabWidth       int
 }
 
+type FileAnalysis struct {
+	analyzer *Analyzer
+	filePath string
+	content  []byte
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "lines [file...]",
 	Short: "Check file lines that exceed a specific width",
 	Long: `Check file lines that exceed a specific width
 
 Arguments:
-  [file...]   The paths to the source files to analyze (optional if using stdin)`,
+  [file...]   The paths to the source files or directories`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		analyzer := NewAnalyzer(columns, skipSignatures, tabWidth)
 
 		if len(args) > 0 {
 			for _, filePath := range args {
-				err := analyzer.ProcessFile(filePath, cmd.OutOrStdout())
+				info, err := os.Stat(filePath)
+				if err != nil {
+					return err
+				}
+
+				if info.IsDir() {
+					err = analyzer.ProcessDir(filePath, cmd.OutOrStdout())
+				} else {
+					err = analyzer.ProcessFile(filePath, cmd.OutOrStdout())
+				}
+
 				if err != nil {
 					return err
 				}
@@ -63,7 +80,8 @@ Arguments:
 			return err
 		}
 
-		err = analyzer.Process(content, cmd.OutOrStdout())
+		analysis := analyzer.NewAnalysis("", content)
+		err = analysis.Process(cmd.OutOrStdout())
 		if err != nil {
 			return err
 		}
@@ -98,11 +116,75 @@ func NewAnalyzer(cols int, skipSig bool, tabW int) *Analyzer {
 	}
 }
 
-func (a *Analyzer) analyzeGoSignatures(content []byte, ignoredLines map[int]bool) error {
-	fileSet := token.NewFileSet()
-	node, err := parser.ParseFile(fileSet, "", content, parser.ParseComments)
+func (a *Analyzer) NewAnalysis(filePath string, content []byte) *FileAnalysis {
+	return &FileAnalysis{
+		analyzer: a,
+		filePath: filePath,
+		content:  content,
+	}
+}
+
+func (a *Analyzer) ProcessDir(dirPath string, out io.Writer) error {
+	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		if d.IsDir() == false {
+			fileErr := a.ProcessFile(path, out)
+			if fileErr != nil {
+				return fileErr
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (a *Analyzer) ProcessFile(filePath string, out io.Writer) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	analysis := a.NewAnalysis(filePath, content)
+
+	buf := new(bytes.Buffer)
+	err = analysis.Process(buf)
+	if err != nil {
+		return err
+	}
+
+	if buf.Len() > 0 {
+		fmt.Fprintf(out, "%s:\n", filePath)
+		out.Write(buf.Bytes())
+		fmt.Fprintln(out)
+	}
+
+	return nil
+}
+
+func (f *FileAnalysis) analyzeSignatures(ignoredLines map[int]bool) error {
+	if f.analyzer.skipSignatures == false {
+		return nil
+	}
+
+	if f.filePath == "" || filepath.Ext(f.filePath) == ".go" {
+		return f.analyzeGoSignatures(ignoredLines)
+	}
+
+	return nil
+}
+
+func (f *FileAnalysis) analyzeGoSignatures(ignoredLines map[int]bool) error {
+	fileSet := token.NewFileSet()
+	node, err := parser.ParseFile(fileSet, "", f.content, parser.ParseComments)
+	if err != nil {
+		return nil
 	}
 
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -135,38 +217,19 @@ func (a *Analyzer) analyzeGoSignatures(content []byte, ignoredLines map[int]bool
 	return nil
 }
 
-func (a *Analyzer) ProcessFile(filePath string, out io.Writer) error {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return err
+func (f *FileAnalysis) Process(out io.Writer) error {
+	if f.isBinary() {
+		return nil
 	}
 
-	buf := new(bytes.Buffer)
-	err = a.Process(content, buf)
-	if err != nil {
-		return err
-	}
-
-	if buf.Len() > 0 {
-		fmt.Fprintf(out, "%s:\n", filePath)
-		out.Write(buf.Bytes())
-		fmt.Fprintln(out)
-	}
-
-	return nil
-}
-
-func (a *Analyzer) Process(content []byte, out io.Writer) error {
 	ignoredLines := map[int]bool{}
 
-	if a.skipSignatures {
-		err := a.analyzeGoSignatures(content, ignoredLines)
-		if err != nil {
-			return err
-		}
+	err := f.analyzeSignatures(ignoredLines)
+	if err != nil {
+		return err
 	}
 
-	reader := bytes.NewReader(content)
+	reader := bytes.NewReader(f.content)
 	scanner := bufio.NewScanner(reader)
 	lineNumber := 0
 
@@ -181,21 +244,35 @@ func (a *Analyzer) Process(content []byte, out io.Writer) error {
 		lineWidth := 0
 		for _, char := range line {
 			if char == '\t' {
-				lineWidth += a.tabWidth
+				lineWidth += f.analyzer.tabWidth
 			} else {
 				lineWidth++
 			}
 		}
 
-		if lineWidth > a.columns {
+		if lineWidth > f.analyzer.columns {
 			fmt.Fprintf(out, "%d: %s\n", lineNumber, line)
 		}
 	}
 
-	err := scanner.Err()
+	err = scanner.Err()
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (f *FileAnalysis) isBinary() bool {
+	upperBound := 8192
+	if len(f.content) < upperBound {
+		upperBound = len(f.content)
+	}
+
+	for i := 0; i < upperBound; i++ {
+		if f.content[i] == 0x00 {
+			return true
+		}
+	}
+	return false
 }
