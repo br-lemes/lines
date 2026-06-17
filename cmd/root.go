@@ -16,13 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	columns        int
-	hidden         bool
-	skipSignatures bool
-	tabWidth       int
-)
-
 type Analyzer struct {
 	columns        int
 	hidden         bool
@@ -44,6 +37,11 @@ var rootCmd = &cobra.Command{
 Arguments:
   [file...]   The paths to the source files or directories`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		columns, _ := cmd.Flags().GetInt("columns")
+		hidden, _ := cmd.Flags().GetBool("hidden")
+		skipSignatures, _ := cmd.Flags().GetBool("skip-signatures")
+		tabWidth, _ := cmd.Flags().GetInt("tab-width")
+
 		analyzer := NewAnalyzer(columns, hidden, skipSignatures, tabWidth)
 
 		if len(args) > 0 {
@@ -106,13 +104,13 @@ func Execute() error {
 
 func init() {
 	rootCmd.Version = version.GetVersion()
-	rootCmd.Flags().IntVarP(&columns, "columns", "c", 80,
+	rootCmd.Flags().IntP("columns", "c", 80,
 		"maximum line length")
-	rootCmd.Flags().IntVarP(&tabWidth, "tab-width", "t", 4,
+	rootCmd.Flags().IntP("tab-width", "t", 4,
 		"visual width of a tab character")
-	rootCmd.Flags().BoolVarP(&skipSignatures, "skip-signatures", "s", true,
+	rootCmd.Flags().BoolP("skip-signatures", "s", true,
 		"skip function signatures")
-	rootCmd.Flags().BoolVarP(&hidden, "hidden", "H", false,
+	rootCmd.Flags().BoolP("hidden", "H", false,
 		"include hidden files and directories")
 }
 
