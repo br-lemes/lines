@@ -48,9 +48,13 @@ Arguments:
 
 		if len(args) > 0 {
 			for _, filePath := range args {
-				info, err := os.Stat(filePath)
+				info, err := os.Lstat(filePath)
 				if err != nil {
 					return err
+				}
+
+				if (info.Mode() & os.ModeSymlink) != 0 {
+					continue
 				}
 
 				if info.IsDir() {
@@ -133,6 +137,10 @@ func (a *Analyzer) ProcessDir(dirPath string, out io.Writer) error {
 	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+
+		if (d.Type() & os.ModeSymlink) != 0 {
+			return nil
 		}
 
 		name := d.Name()
