@@ -1,4 +1,6 @@
-.PHONY: build clean linux-amd64 linux-arm64 release test version windows
+PLATFORMS := linux-amd64 linux-arm64 windows-amd64
+
+.PHONY: build clean release test version $(PLATFORMS)
 
 TARGET := $(notdir $(shell go list -m 2>/dev/null))
 ifeq ($(TARGET),)
@@ -7,26 +9,28 @@ endif
 
 export CGO_ENABLED=0
 
+ARTIFACTS := $(foreach p,$(PLATFORMS),\
+	$(TARGET)-$(p)$(if $(filter windows%,$(p)),.exe))
+
+SEMVER := github.com/br-lemes/semver@latest
+
 build: test
 	@go build -ldflags "-s -w"
 
 clean:
-	$(RM) $(TARGET) $(TARGET)-linux-amd64 $(TARGET)-linux-arm64 $(TARGET).exe
+	$(RM) $(TARGET) $(ARTIFACTS)
 
-linux-amd64: test
-	@GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o $(TARGET)-linux-amd64
+$(PLATFORMS): test
+	@$(eval GOOS := $(word 1,$(subst -, ,$@)))
+	@$(eval GOARCH := $(word 2,$(subst -, ,$@)))
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags "-s -w" \
+		-o $(TARGET)-$@$(if $(filter windows,$(GOOS)),.exe)
 
-linux-arm64: test
-	@GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o $(TARGET)-linux-arm64
-
-release: version linux-amd64 linux-arm64 windows
-	@go run ./tools/release/main.go
+release: version $(PLATFORMS)
+	@go run $(SEMVER) release $(ARTIFACTS)
 
 test:
 	@go test ./...
 
 version: test
-	@go run ./tools/version/main.go
-
-windows: test
-	@GOOS=windows GOARCH=amd64 go build -ldflags "-s -w"
+	@go run $(SEMVER)

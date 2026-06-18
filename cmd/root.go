@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/br-lemes/lines/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -94,7 +93,8 @@ Arguments:
 	},
 }
 
-func Execute() error {
+func Execute(version string) error {
+	rootCmd.Version = version
 	err := rootCmd.Execute()
 	if err != nil {
 		return err
@@ -103,7 +103,6 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.Version = version.GetVersion()
 	rootCmd.Flags().IntP("columns", "c", 80,
 		"maximum line length")
 	rootCmd.Flags().IntP("tab-width", "t", 4,
