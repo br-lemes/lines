@@ -1,14 +1,5 @@
 {
     "ignorePaths": ["go.mod", "go.sum"],
-    "language": "en,pt-br",
-    "words": [
-        "github",
-        "GOARCH",
-        "ldflags",
-        "lemes",
-        "linux",
-        "NIXOS",
-        "patchelf",
-        "rpath"
-    ]
+    "language": "en",
+    "words": ["github", "GOARCH", "ldflags", "lemes", "linux"]
 }
