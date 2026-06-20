@@ -7,6 +7,8 @@ ifeq ($(TARGET),)
 	TARGET := $(notdir $(CURDIR))
 endif
 
+export CGO_ENABLED=0
+
 ARTIFACTS := $(foreach p,$(PLATFORMS),\
 	$(TARGET)-$(p)$(if $(filter windows%,$(p)),.exe))
 
@@ -22,8 +24,7 @@ $(PLATFORMS): test
 	@$(eval GOOS := $(word 1,$(subst -, ,$@)))
 	@$(eval GOARCH := $(word 2,$(subst -, ,$@)))
 	@$(eval OUTPUT := $(TARGET)-$@$(if $(filter windows,$(GOOS)),.exe))
-	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags "-s -w" -o $(OUTPUT)
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags "-s -w" -o $(OUTPUT)
 
 release: version $(PLATFORMS)
 	@go run $(SEMVER) release $(ARTIFACTS)
