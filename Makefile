@@ -1,6 +1,6 @@
 PLATFORMS := linux-amd64 linux-arm64 windows-amd64
 
-.PHONY: build clean release test version $(PLATFORMS)
+.PHONY: all build clean coverage release test version $(PLATFORMS)
 
 TARGET := $(notdir $(shell go list -m 2>/dev/null))
 ifeq ($(TARGET),)
@@ -21,6 +21,10 @@ all: $(PLATFORMS)
 
 clean:
 	$(RM) $(ARTIFACTS)
+
+coverage:
+	@go test ./... -coverprofile=coverage.out && \
+		go run github.com/Azure/gocover@latest full --cover-profile=coverage.out
 
 $(PLATFORMS): test
 	@$(eval GOOS := $(word 1,$(subst -, ,$@)))

@@ -11,5 +11,8 @@ false positives on boilerplate code.
 column size rather than a single character byte.
 - **AST Smart Filtering**: Leverages Go's native syntax parser to identify and
 skip function signatures, anonymous functions, and function-typed struct fields.
+- **Fragmented Expression Detection**: Identifies expressions (like multi-line
+calls, assignments, literals, or binary operations) that were broken down into
+multiple lines but could completely fit within a single line limit.
 - **Pipeline Friendly**: Seamlessly accepts input from either a file argument or
 directly via standard input (`stdin`).

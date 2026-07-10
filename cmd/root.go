@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"io"
 	"os"
@@ -16,10 +17,11 @@ import (
 )
 
 type Analyzer struct {
-	columns        int
-	hidden         bool
-	skipSignatures bool
-	tabWidth       int
+	columns          int
+	hidden           bool
+	skipSignatures   bool
+	tabWidth         int
+	detectFragmented bool
 }
 
 type FileAnalysis struct {
@@ -40,8 +42,15 @@ Arguments:
 		hidden, _ := cmd.Flags().GetBool("hidden")
 		skipSignatures, _ := cmd.Flags().GetBool("skip-signatures")
 		tabWidth, _ := cmd.Flags().GetInt("tab-width")
+		detectFragmented, _ := cmd.Flags().GetBool("detect-fragmented")
 
-		analyzer := NewAnalyzer(columns, hidden, skipSignatures, tabWidth)
+		analyzer := Analyzer{
+			columns:          columns,
+			hidden:           hidden,
+			skipSignatures:   skipSignatures,
+			tabWidth:         tabWidth,
+			detectFragmented: detectFragmented,
+		}
 
 		if len(args) > 0 {
 			for _, filePath := range args {
@@ -69,7 +78,7 @@ Arguments:
 
 		if cmd.InOrStdin() == os.Stdin {
 			stat, err := os.Stdin.Stat()
-			if err != nil {
+			if err != nil { //+gocover:ignore:block should never happen
 				return err
 			}
 
@@ -79,7 +88,7 @@ Arguments:
 		}
 
 		content, err := io.ReadAll(cmd.InOrStdin())
-		if err != nil {
+		if err != nil { //+gocover:ignore:block should never happen
 			return err
 		}
 
@@ -93,41 +102,24 @@ Arguments:
 	},
 }
 
-func Execute(version string) error {
+func Execute(version string) error { //+gocover:ignore:block delegates execution
 	rootCmd.Version = version
-	err := rootCmd.Execute()
-	if err != nil {
-		return err
-	}
-	return nil
+	return rootCmd.Execute()
 }
 
 func init() {
-	rootCmd.Flags().IntP("columns", "c", 80,
-		"maximum line length")
-	rootCmd.Flags().IntP("tab-width", "t", 4,
-		"visual width of a tab character")
+	rootCmd.Flags().IntP("columns", "c", 80, "maximum line length")
+	rootCmd.Flags().IntP("tab-width", "t", 4, "visual width of a tab character")
 	rootCmd.Flags().BoolP("skip-signatures", "s", true,
 		"skip function signatures")
 	rootCmd.Flags().BoolP("hidden", "H", false,
 		"include hidden files and directories")
-}
-
-func NewAnalyzer(cols int, hid bool, skipSig bool, tabW int) *Analyzer {
-	return &Analyzer{
-		columns:        cols,
-		hidden:         hid,
-		skipSignatures: skipSig,
-		tabWidth:       tabW,
-	}
+	rootCmd.Flags().BoolP("detect-fragmented", "F", true,
+		"detect lines that could be collapsed into one")
 }
 
 func (a *Analyzer) NewAnalysis(filePath string, content []byte) *FileAnalysis {
-	return &FileAnalysis{
-		analyzer: a,
-		filePath: filePath,
-		content:  content,
-	}
+	return &FileAnalysis{analyzer: a, filePath: filePath, content: content}
 }
 
 func (a *Analyzer) ProcessDir(dirPath string, out io.Writer) error {
@@ -190,23 +182,21 @@ func (a *Analyzer) ProcessFile(filePath string, out io.Writer) error {
 	return nil
 }
 
-func (f *FileAnalysis) analyzeSignatures(ignoredLines map[int]bool) error {
+func (f *FileAnalysis) analyzeSignatures(ignoredLines map[int]bool) {
 	if f.analyzer.skipSignatures == false {
-		return nil
+		return
 	}
 
 	if f.filePath == "" || filepath.Ext(f.filePath) == ".go" {
-		return f.analyzeGoSignatures(ignoredLines)
+		f.analyzeGoSignatures(ignoredLines)
 	}
-
-	return nil
 }
 
-func (f *FileAnalysis) analyzeGoSignatures(ignoredLines map[int]bool) error {
+func (f *FileAnalysis) analyzeGoSignatures(ignoredLines map[int]bool) {
 	fileSet := token.NewFileSet()
 	node, err := parser.ParseFile(fileSet, "", f.content, parser.ParseComments)
-	if err != nil {
-		return nil
+	if err != nil { //+gocover:ignore:block should never happen
+		return
 	}
 
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -235,8 +225,108 @@ func (f *FileAnalysis) analyzeGoSignatures(ignoredLines map[int]bool) error {
 		}
 		return true
 	})
+}
 
-	return nil
+func (f *FileAnalysis) detectFragmentedLines(out io.Writer) {
+	if f.analyzer.detectFragmented == false {
+		return
+	}
+
+	if f.filePath != "" {
+		var ext string
+		ext = filepath.Ext(f.filePath)
+		if ext != ".go" {
+			return
+		}
+	}
+
+	fileSet := token.NewFileSet()
+	node, err := parser.ParseFile(fileSet, "", f.content, parser.ParseComments)
+	if err != nil {
+		return
+	}
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		if n == nil {
+			return true
+		}
+
+		var startPos token.Position
+		startPos = fileSet.Position(n.Pos())
+		var endPos token.Position
+		endPos = fileSet.Position(n.End())
+
+		if startPos.Line == endPos.Line {
+			return true
+		}
+
+		var shouldAnalyze bool
+		shouldAnalyze = false
+
+		switch n.(type) {
+		case *ast.CallExpr:
+			shouldAnalyze = true
+		case *ast.CompositeLit:
+			shouldAnalyze = true
+		case *ast.BinaryExpr:
+			shouldAnalyze = true
+		case *ast.AssignStmt:
+			shouldAnalyze = true
+		}
+
+		if shouldAnalyze == false {
+			return true
+		}
+
+		var buf bytes.Buffer
+		var cfg printer.Config
+		cfg.Mode = printer.RawFormat
+
+		err = cfg.Fprint(&buf, fileSet, n)
+		if err != nil { //+gocover:ignore:block should never happen
+			return true
+		}
+
+		var linearText string
+		linearText = buf.String()
+
+		var virtualWidth int
+		virtualWidth = (startPos.Column - 1) * f.analyzer.tabWidth
+
+		var lastSpace bool
+		lastSpace = false
+
+		for _, char := range linearText {
+			if char == '\n' || char == '\r' || char == '\t' || char == ' ' {
+				if lastSpace == false {
+					virtualWidth++
+					lastSpace = true
+				}
+			} else {
+				virtualWidth++
+				lastSpace = false
+			}
+		}
+
+		if virtualWidth < f.analyzer.columns {
+			var msg string
+			msg = "Warning: Lines %d-%d contain a fragmented expression " +
+				"that fits within %d characters (limit %d)\n"
+
+			var l1 int
+			l1 = startPos.Line
+			var l2 int
+			l2 = endPos.Line
+			var vw int
+			vw = virtualWidth
+			var col int
+			col = f.analyzer.columns
+
+			fmt.Fprintf(out, msg, l1, l2, vw, col)
+		}
+
+		return true
+	})
 }
 
 func (f *FileAnalysis) Process(out io.Writer) error {
@@ -246,10 +336,8 @@ func (f *FileAnalysis) Process(out io.Writer) error {
 
 	ignoredLines := map[int]bool{}
 
-	err := f.analyzeSignatures(ignoredLines)
-	if err != nil {
-		return err
-	}
+	f.analyzeSignatures(ignoredLines)
+	f.detectFragmentedLines(out)
 
 	reader := bytes.NewReader(f.content)
 	scanner := bufio.NewScanner(reader)
@@ -277,7 +365,7 @@ func (f *FileAnalysis) Process(out io.Writer) error {
 		}
 	}
 
-	err = scanner.Err()
+	err := scanner.Err()
 	if err != nil {
 		return err
 	}

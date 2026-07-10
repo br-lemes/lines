@@ -19,9 +19,7 @@ func ExecuteSignatureCheck() {
 func main() {
 	ExecuteSignatureCheck()
 
-	callback := func(status int, message string) {
-		fmt.Println(message)
-	}
+	callback := func(status int, message string) { fmt.Println(message) }
 
 	callback(200, "success")
 }

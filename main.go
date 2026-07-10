@@ -1,3 +1,4 @@
+// +gocover:ignore:file entry point and only delegates execution
 package main
 
 import (

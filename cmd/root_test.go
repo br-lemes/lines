@@ -402,3 +402,176 @@ func TestRootCmd_Stdin(t *testing.T) {
 		t.Errorf("expected output to contain flagged line, got:\n%s", output)
 	}
 }
+
+func TestRootCmd_DetectFragmented(t *testing.T) {
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+	rootCmd.SetArgs([]string{
+		"-c=80", "-H=false", "-s=true", "-t=4", "-F=true",
+		"testdata/fragmented.go",
+	})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	output := bufOut.String()
+
+	expectedWarnings := []string{
+		"Warning: Lines 11-14 contain a fragmented expression",
+		"Warning: Lines 16-19 contain a fragmented expression",
+		"Warning: Lines 23-24 contain a fragmented expression",
+		"Warning: Lines 26-27 contain a fragmented expression",
+	}
+
+	for _, exp := range expectedWarnings {
+		contains := strings.Contains(output, exp)
+		if contains == false {
+			t.Errorf("expected output to contain warning, got:\n%s", output)
+		}
+	}
+
+	unexpected := "Warning: Lines 29"
+	containsUnexpected := strings.Contains(output, unexpected)
+	if containsUnexpected == true {
+		t.Errorf(
+			"expected long expression NOT to trigger warning, but it did:\n%s",
+			output)
+	}
+}
+
+func TestRootCmd_FragmentedDisabled(t *testing.T) {
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+
+	rootCmd.SetArgs([]string{
+		"-c=80", "-H=false", "-s=true", "-t=4", "-F=false",
+		"testdata/fragmented.go",
+	})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	output := bufOut.String()
+	if strings.Contains(output, "Warning: Lines") {
+		t.Errorf(
+			"expected no fragmented warnings when flag is disabled, got:\n%s",
+			output)
+	}
+}
+
+func TestRootCmd_LstatError(t *testing.T) {
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+
+	nonExistentFile := filepath.Join("testdata", "this_file_does_not_exist.go")
+	rootCmd.SetArgs([]string{
+		"-c=10", "-H=false", "-s=true", "-t=4", nonExistentFile,
+	})
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatalf("expected an error for non-existent file, got nil")
+	}
+
+	if os.IsNotExist(err) == false {
+		t.Errorf("expected a not exist error, got: %v", err)
+	}
+}
+
+func TestRootCmd_WalkDirError(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "walk_dir_error_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	badDir := filepath.Join(tmpDir, "unreadable_dir")
+	err = os.Mkdir(badDir, 0000)
+	if err != nil {
+		t.Fatalf("failed to create unreadable dir: %v", err)
+	}
+
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4", tmpDir})
+
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatalf("expected an error when walking unreadable directory, got nil")
+	}
+
+	if os.IsPermission(err) == false {
+		t.Errorf("expected permission error, got: %v", err)
+	}
+}
+
+func TestRootCmd_ReadFilePermissionError(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "read_file_err_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tmpFile := filepath.Join(tmpDir, "secret.txt")
+	err = os.WriteFile(tmpFile, []byte("hidden"), 0000)
+	if err != nil {
+		t.Fatalf("failed to create unreadable file: %v", err)
+	}
+
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4", tmpFile})
+
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatalf("expected an error for unreadable file, got nil")
+	}
+
+	if os.IsPermission(err) == false {
+		t.Errorf("expected permission error, got: %v", err)
+	}
+}
+
+func TestRootCmd_LineTooLongError(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "scanner_error_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	hugeLine := strings.Repeat("A", 70000) + "\n"
+	hugeFile := filepath.Join(tmpDir, "huge_line.txt")
+	err = os.WriteFile(hugeFile, []byte(hugeLine), 0644)
+	if err != nil {
+		t.Fatalf("failed to create huge file: %v", err)
+	}
+
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+
+	stdinBuffer := bytes.NewBufferString(hugeLine)
+	rootCmd.SetIn(stdinBuffer)
+	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4"})
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatalf("expected an error from stdin scanner, got nil")
+	}
+	if !strings.Contains(err.Error(), "token too long") {
+		t.Errorf("expected 'token too long' error, got: %v", err)
+	}
+
+	bufOut.Reset()
+	rootCmd.SetOut(bufOut)
+	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4", tmpDir})
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatalf("expected an error from directory scanner, got nil")
+	}
+	if !strings.Contains(err.Error(), "token too long") {
+		t.Errorf("expected 'token too long' error, got: %v", err)
+	}
+}
