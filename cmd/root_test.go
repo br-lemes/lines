@@ -173,7 +173,7 @@ func TestRootCmd_GoSignatures(t *testing.T) {
 				"testdata/signatures.go",
 			},
 			expectedLines: []string{
-				`16: 	fmt.Printf("short: %d\nlong: %d\n", short, long)`,
+				`18: 	fmt.Printf("short: %d\nlong: %d\n", short, long)`,
 			},
 			unexpectedLines: []string{
 				"Handler func(payload string, retryCount int) error",
@@ -189,11 +189,11 @@ func TestRootCmd_GoSignatures(t *testing.T) {
 				"testdata/signatures.go",
 			},
 			expectedLines: []string{
-				"6: 	Handler func(payload string, retryCount int) error",
-				"10: 	ProcessEvent(id int, data []byte, force bool) bool",
-				"13: func ExecuteSignatureCheck() {",
-				`16: 	fmt.Printf("short: %d\nlong: %d\n", short, long)`,
-				"22: 	callback := func(status int, message string) {",
+				"8: 	Handler func(payload string, retryCount int) error",
+				"12: 	ProcessEvent(id int, data []byte, force bool) bool",
+				"15: func ExecuteSignatureCheck() {",
+				`18: 	fmt.Printf("short: %d\nlong: %d\n", short, long)`,
+				"24: 	callback := func(status int, message string) {",
 			},
 			unexpectedLines: []string{},
 		},

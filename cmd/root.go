@@ -222,6 +222,15 @@ func (f *FileAnalysis) analyzeGoSignatures(ignoredLines map[int]bool) {
 					ignoredLines[i] = true
 				}
 			}
+		case *ast.TypeSpec:
+			_, isFunc := x.Type.(*ast.FuncType)
+			if isFunc {
+				startLine := fileSet.Position(x.Pos()).Line
+				endLine := fileSet.Position(x.End()).Line
+				for i := startLine; i <= endLine; i++ {
+					ignoredLines[i] = true
+				}
+			}
 		}
 		return true
 	})

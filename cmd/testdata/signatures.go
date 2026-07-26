@@ -2,6 +2,8 @@ package main
 
 import "fmt"
 
+type CommandRunner func(commandName string, options []string, timeoutSeconds int) (string, error)
+
 type WorkerConfig struct {
 	Handler func(payload string, retryCount int) error
 }
@@ -22,4 +24,14 @@ func main() {
 	callback := func(status int, message string) { fmt.Println(message) }
 
 	callback(200, "success")
+
+	var runner CommandRunner
+	runner = func(commandName string, options []string, timeoutSeconds int) (string, error) {
+		return commandName, nil
+	}
+
+	result, err := runner("lines", []string{"--skip-signatures"}, 30)
+	if err == nil {
+		fmt.Println(result)
+	}
 }
