@@ -18,10 +18,11 @@ import (
 
 type Analyzer struct {
 	columns          int
+	detectFragmented bool
+	filesWithMatches bool
 	hidden           bool
 	skipSignatures   bool
 	tabWidth         int
-	detectFragmented bool
 }
 
 type FileAnalysis struct {
@@ -39,17 +40,19 @@ Arguments:
   [file...]   The paths to the source files or directories`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		columns, _ := cmd.Flags().GetInt("columns")
+		detectFragmented, _ := cmd.Flags().GetBool("detect-fragmented")
+		filesWithMatches, _ := cmd.Flags().GetBool("files-with-matches")
 		hidden, _ := cmd.Flags().GetBool("hidden")
 		skipSignatures, _ := cmd.Flags().GetBool("skip-signatures")
 		tabWidth, _ := cmd.Flags().GetInt("tab-width")
-		detectFragmented, _ := cmd.Flags().GetBool("detect-fragmented")
 
 		analyzer := Analyzer{
 			columns:          columns,
+			detectFragmented: detectFragmented,
+			filesWithMatches: filesWithMatches,
 			hidden:           hidden,
 			skipSignatures:   skipSignatures,
 			tabWidth:         tabWidth,
-			detectFragmented: detectFragmented,
 		}
 
 		if len(args) > 0 {
@@ -109,13 +112,15 @@ func Execute(version string) error { //+gocover:ignore:block delegates execution
 
 func init() {
 	rootCmd.Flags().IntP("columns", "c", 80, "maximum line length")
-	rootCmd.Flags().IntP("tab-width", "t", 4, "visual width of a tab character")
-	rootCmd.Flags().BoolP("skip-signatures", "s", true,
-		"skip function signatures")
-	rootCmd.Flags().BoolP("hidden", "H", false,
-		"include hidden files and directories")
 	rootCmd.Flags().BoolP("detect-fragmented", "F", true,
 		"detect lines that could be collapsed into one")
+	rootCmd.Flags().BoolP("files-with-matches", "l", false,
+		"print only names of files with lines exceeding the limit")
+	rootCmd.Flags().BoolP("hidden", "H", false,
+		"include hidden files and directories")
+	rootCmd.Flags().BoolP("skip-signatures", "s", true,
+		"skip function signatures")
+	rootCmd.Flags().IntP("tab-width", "t", 4, "visual width of a tab character")
 }
 
 func (a *Analyzer) NewAnalysis(filePath string, content []byte) *FileAnalysis {
@@ -174,9 +179,13 @@ func (a *Analyzer) ProcessFile(filePath string, out io.Writer) error {
 	}
 
 	if buf.Len() > 0 {
-		fmt.Fprintf(out, "%s:\n", filePath)
-		out.Write(buf.Bytes())
-		fmt.Fprintln(out)
+		if a.filesWithMatches {
+			fmt.Fprintln(out, filePath)
+		} else {
+			fmt.Fprintf(out, "%s:\n", filePath)
+			out.Write(buf.Bytes())
+			fmt.Fprintln(out)
+		}
 	}
 
 	return nil

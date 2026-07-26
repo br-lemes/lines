@@ -205,7 +205,8 @@ func TestRootCmd_GoSignatures(t *testing.T) {
 			rootCmd.SetOut(bufOut)
 			rootCmd.SetArgs(tt.args)
 
-			if err := rootCmd.Execute(); err != nil {
+			err := rootCmd.Execute()
+			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
 
@@ -350,7 +351,8 @@ func TestRootCmd_Symlink(t *testing.T) {
 		"-c=10", "-H=false", "-s=true", "-t=4", symlinkFile,
 	})
 
-	if err := rootCmd.Execute(); err != nil {
+	err = rootCmd.Execute()
+	if err != nil {
 		t.Fatalf("expected no error in direct call, got %v", err)
 	}
 
@@ -573,5 +575,40 @@ func TestRootCmd_LineTooLongError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "token too long") {
 		t.Errorf("expected 'token too long' error, got: %v", err)
+	}
+}
+
+func TestRootCmd_FilesWithMatches(t *testing.T) {
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+
+	rootCmd.SetArgs([]string{
+		"-c=10", "-H=false", "-s=true", "-t=4", "-l=true",
+		"testdata/first.txt", "testdata/second.txt",
+	})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	output := bufOut.String()
+
+	if strings.Contains(output, "testdata/first.txt") == false {
+		t.Errorf("expected output to contain first.txt")
+	}
+
+	if strings.Contains(output, "testdata/second.txt") == false {
+		t.Errorf("expected output to contain second.txt")
+	}
+
+	if strings.Contains(output, "testdata/first.txt:") {
+		t.Errorf("expected plain filename without colon header")
+	}
+
+	unexpectedLine := "2: this line exceeds ten characters"
+	if strings.Contains(output, unexpectedLine) {
+		t.Errorf("expected output NOT to contain line contents when -l is set,"+
+			" got:\n%s", output)
 	}
 }
