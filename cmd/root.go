@@ -17,11 +17,12 @@ import (
 )
 
 type Analyzer struct {
+	allowMultiline   bool
+	allowShortIf     bool
+	checkSignatures  bool
 	columns          int
-	detectFragmented bool
 	filesWithMatches bool
 	hidden           bool
-	skipSignatures   bool
 	tabWidth         int
 }
 
@@ -39,19 +40,21 @@ var rootCmd = &cobra.Command{
 Arguments:
   [file...]   The paths to the source files or directories`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		allowMultiline, _ := cmd.Flags().GetBool("allow-multiline")
+		allowShortIf, _ := cmd.Flags().GetBool("allow-short-if")
+		checkSignatures, _ := cmd.Flags().GetBool("check-signatures")
 		columns, _ := cmd.Flags().GetInt("columns")
-		detectFragmented, _ := cmd.Flags().GetBool("detect-fragmented")
 		filesWithMatches, _ := cmd.Flags().GetBool("files-with-matches")
 		hidden, _ := cmd.Flags().GetBool("hidden")
-		skipSignatures, _ := cmd.Flags().GetBool("skip-signatures")
 		tabWidth, _ := cmd.Flags().GetInt("tab-width")
 
 		analyzer := Analyzer{
+			allowMultiline:   allowMultiline,
+			allowShortIf:     allowShortIf,
+			checkSignatures:  checkSignatures,
 			columns:          columns,
-			detectFragmented: detectFragmented,
 			filesWithMatches: filesWithMatches,
 			hidden:           hidden,
-			skipSignatures:   skipSignatures,
 			tabWidth:         tabWidth,
 		}
 
@@ -111,15 +114,17 @@ func Execute(version string) error { //+gocover:ignore:block delegates execution
 }
 
 func init() {
+	rootCmd.Flags().Bool("allow-multiline", false,
+		"allow expressions split into multiple lines even if it fits on one")
+	rootCmd.Flags().Bool("allow-short-if", false,
+		"allow if with a short statement (if init; cond)")
+	rootCmd.Flags().Bool("check-signatures", false,
+		"enforce line limits on function signatures")
 	rootCmd.Flags().IntP("columns", "c", 80, "maximum line length")
-	rootCmd.Flags().BoolP("detect-fragmented", "F", true,
-		"detect lines that could be collapsed into one")
 	rootCmd.Flags().BoolP("files-with-matches", "l", false,
 		"print only names of files with lines exceeding the limit")
 	rootCmd.Flags().BoolP("hidden", "H", false,
 		"include hidden files and directories")
-	rootCmd.Flags().BoolP("skip-signatures", "s", true,
-		"skip function signatures")
 	rootCmd.Flags().IntP("tab-width", "t", 4, "visual width of a tab character")
 }
 
@@ -192,7 +197,7 @@ func (a *Analyzer) ProcessFile(filePath string, out io.Writer) error {
 }
 
 func (f *FileAnalysis) analyzeSignatures(ignoredLines map[int]bool) {
-	if f.analyzer.skipSignatures == false {
+	if f.analyzer.checkSignatures {
 		return
 	}
 
@@ -245,8 +250,53 @@ func (f *FileAnalysis) analyzeGoSignatures(ignoredLines map[int]bool) {
 	})
 }
 
-func (f *FileAnalysis) detectFragmentedLines(out io.Writer) {
-	if f.analyzer.detectFragmented == false {
+func (f *FileAnalysis) detectShortIfStatements(out io.Writer) {
+	if f.analyzer.allowShortIf {
+		return
+	}
+
+	if f.filePath != "" {
+		var ext string
+		ext = filepath.Ext(f.filePath)
+		if ext != ".go" {
+			return
+		}
+	}
+
+	fileSet := token.NewFileSet()
+	node, err := parser.ParseFile(fileSet, "", f.content, parser.ParseComments)
+	if err != nil {
+		return
+	}
+
+	lines := bytes.Split(f.content, []byte("\n"))
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		if n == nil {
+			return true
+		}
+
+		ifStmt, ok := n.(*ast.IfStmt)
+		if ok == false {
+			return true
+		}
+
+		if ifStmt.Init != nil {
+			lineNumber := fileSet.Position(ifStmt.Pos()).Line
+			var lineContent string
+			if lineNumber > 0 && lineNumber <= len(lines) {
+				lineContent = string(bytes.TrimRight(lines[lineNumber-1], "\r"))
+			}
+			fmt.Fprintf(out, "%d: %s // if with a short statement\n",
+				lineNumber, lineContent)
+		}
+
+		return true
+	})
+}
+
+func (f *FileAnalysis) detectMultilineExpressions(out io.Writer) {
+	if f.analyzer.allowMultiline {
 		return
 	}
 
@@ -328,7 +378,7 @@ func (f *FileAnalysis) detectFragmentedLines(out io.Writer) {
 
 		if virtualWidth < f.analyzer.columns {
 			var msg string
-			msg = "Warning: Lines %d-%d contain a fragmented expression " +
+			msg = "Warning: Lines %d-%d contain a multiline expression " +
 				"that fits within %d characters (limit %d)\n"
 
 			var l1 int
@@ -355,7 +405,8 @@ func (f *FileAnalysis) Process(out io.Writer) error {
 	ignoredLines := map[int]bool{}
 
 	f.analyzeSignatures(ignoredLines)
-	f.detectFragmentedLines(out)
+	f.detectShortIfStatements(out)
+	f.detectMultilineExpressions(out)
 
 	reader := bytes.NewReader(f.content)
 	scanner := bufio.NewScanner(reader)

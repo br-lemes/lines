@@ -12,9 +12,7 @@ func TestRootCmd_SingleFile(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
-	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4", "testdata/first.txt",
-	})
+	rootCmd.SetArgs([]string{"-c=10", "testdata/first.txt"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -31,11 +29,8 @@ func TestRootCmd_SingleFile(t *testing.T) {
 func TestRootCmd_MultipleFiles(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
-
 	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4",
-		"testdata/first.txt", "testdata/second.txt",
-	})
+		"-c=10", "testdata/first.txt", "testdata/second.txt"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -68,9 +63,7 @@ func TestRootCmd_Directory(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
-	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4", "testdata/dir",
-	})
+	rootCmd.SetArgs([]string{"-c=10", "testdata/dir"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -93,9 +86,7 @@ func TestRootCmd_Hidden_Disabled(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
-	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4", "testdata/hidden",
-	})
+	rootCmd.SetArgs([]string{"-c=10", "testdata/hidden"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -118,9 +109,7 @@ func TestRootCmd_Hidden_Enabled(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
-	rootCmd.SetArgs([]string{
-		"-c=10", "-H=true", "-s=true", "-t=4", "testdata/hidden",
-	})
+	rootCmd.SetArgs([]string{"-c=10", "-H=true", "testdata/hidden"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -143,9 +132,7 @@ func TestRootCmd_Binary(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
-	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4", "testdata/binary.dat",
-	})
+	rootCmd.SetArgs([]string{"-c=10", "testdata/binary.dat"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -167,11 +154,8 @@ func TestRootCmd_GoSignatures(t *testing.T) {
 		unexpectedLines []string
 	}{
 		{
-			name: "Skip Enabled",
-			args: []string{
-				"-c=20", "-H=false", "-s=true", "-t=4",
-				"testdata/signatures.go",
-			},
+			name: "Signature Check Disabled",
+			args: []string{"-c=20", "testdata/signatures.go"},
 			expectedLines: []string{
 				`18: 	fmt.Printf("short: %d\nlong: %d\n", short, long)`,
 			},
@@ -183,11 +167,9 @@ func TestRootCmd_GoSignatures(t *testing.T) {
 			},
 		},
 		{
-			name: "Skip Disabled",
+			name: "Signature Check Enabled",
 			args: []string{
-				"-c=20", "-H=false", "-s=false", "-t=4",
-				"testdata/signatures.go",
-			},
+				"-c=20", "--check-signatures", "testdata/signatures.go"},
 			expectedLines: []string{
 				"8: 	Handler func(payload string, retryCount int) error",
 				"12: 	ProcessEvent(id int, data []byte, force bool) bool",
@@ -256,9 +238,7 @@ func TestRootCmd_TabWidth(t *testing.T) {
 			rootCmd.SetOut(bufOut)
 
 			rootCmd.SetArgs([]string{
-				"-c=10", "-H=false", "-s=true", "-t=" + tt.tabWidth,
-				"testdata/tab_width.txt",
-			})
+				"-c=10", "-t=" + tt.tabWidth, "testdata/tab_width.txt"})
 
 			err := rootCmd.Execute()
 			if err != nil {
@@ -324,7 +304,7 @@ func TestRootCmd_Symlink(t *testing.T) {
 
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
-	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4", tmpDir})
+	rootCmd.SetArgs([]string{"-c=10", tmpDir})
 
 	err = rootCmd.Execute()
 	if err != nil {
@@ -347,9 +327,7 @@ func TestRootCmd_Symlink(t *testing.T) {
 	}
 
 	bufOut.Reset()
-	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4", symlinkFile,
-	})
+	rootCmd.SetArgs([]string{"-c=10", symlinkFile})
 
 	err = rootCmd.Execute()
 	if err != nil {
@@ -366,7 +344,7 @@ func TestRootCmd_NoInputError(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
-	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4"})
+	rootCmd.SetArgs([]string{"-c=10", "-t=4"})
 
 	err := rootCmd.Execute()
 
@@ -391,7 +369,7 @@ func TestRootCmd_Stdin(t *testing.T) {
 	rootCmd.SetOut(bufOut)
 	rootCmd.SetErr(bufErr)
 
-	rootCmd.SetArgs([]string{"-c=2", "-H=false", "-s=true", "-t=4"})
+	rootCmd.SetArgs([]string{"-c=2", "-t=4"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -405,13 +383,10 @@ func TestRootCmd_Stdin(t *testing.T) {
 	}
 }
 
-func TestRootCmd_DetectFragmented(t *testing.T) {
+func TestRootCmd_DetectMultiline(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
-	rootCmd.SetArgs([]string{
-		"-c=80", "-H=false", "-s=true", "-t=4", "-F=true",
-		"testdata/fragmented.go",
-	})
+	rootCmd.SetArgs([]string{"-c=80", "testdata/multiline.go"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -421,10 +396,10 @@ func TestRootCmd_DetectFragmented(t *testing.T) {
 	output := bufOut.String()
 
 	expectedWarnings := []string{
-		"Warning: Lines 11-14 contain a fragmented expression",
-		"Warning: Lines 16-19 contain a fragmented expression",
-		"Warning: Lines 23-24 contain a fragmented expression",
-		"Warning: Lines 26-27 contain a fragmented expression",
+		"Warning: Lines 11-14 contain a multiline expression",
+		"Warning: Lines 16-19 contain a multiline expression",
+		"Warning: Lines 23-24 contain a multiline expression",
+		"Warning: Lines 26-27 contain a multiline expression",
 	}
 
 	for _, exp := range expectedWarnings {
@@ -443,14 +418,12 @@ func TestRootCmd_DetectFragmented(t *testing.T) {
 	}
 }
 
-func TestRootCmd_FragmentedDisabled(t *testing.T) {
+func TestRootCmd_AllowMultiline(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
 	rootCmd.SetArgs([]string{
-		"-c=80", "-H=false", "-s=true", "-t=4", "-F=false",
-		"testdata/fragmented.go",
-	})
+		"-c=80", "--allow-multiline", "testdata/multiline.go"})
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -459,9 +432,8 @@ func TestRootCmd_FragmentedDisabled(t *testing.T) {
 
 	output := bufOut.String()
 	if strings.Contains(output, "Warning: Lines") {
-		t.Errorf(
-			"expected no fragmented warnings when flag is disabled, got:\n%s",
-			output)
+		t.Errorf("expected no multiline warnings when allow-multiline is set,"+
+			" got:\n%s", output)
 	}
 }
 
@@ -469,10 +441,8 @@ func TestRootCmd_LstatError(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
-	nonExistentFile := filepath.Join("testdata", "this_file_does_not_exist.go")
 	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4", nonExistentFile,
-	})
+		"-c=10", filepath.Join("testdata", "this_file_does_not_exist.go")})
 
 	err := rootCmd.Execute()
 	if err == nil {
@@ -499,7 +469,7 @@ func TestRootCmd_WalkDirError(t *testing.T) {
 
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
-	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4", tmpDir})
+	rootCmd.SetArgs([]string{"-c=10", tmpDir})
 
 	err = rootCmd.Execute()
 	if err == nil {
@@ -526,7 +496,7 @@ func TestRootCmd_ReadFilePermissionError(t *testing.T) {
 
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
-	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4", tmpFile})
+	rootCmd.SetArgs([]string{"-c=10", tmpFile})
 
 	err = rootCmd.Execute()
 	if err == nil {
@@ -557,7 +527,7 @@ func TestRootCmd_LineTooLongError(t *testing.T) {
 
 	stdinBuffer := bytes.NewBufferString(hugeLine)
 	rootCmd.SetIn(stdinBuffer)
-	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4"})
+	rootCmd.SetArgs([]string{"-c=10", "-t=4"})
 	err = rootCmd.Execute()
 	if err == nil {
 		t.Fatalf("expected an error from stdin scanner, got nil")
@@ -568,7 +538,7 @@ func TestRootCmd_LineTooLongError(t *testing.T) {
 
 	bufOut.Reset()
 	rootCmd.SetOut(bufOut)
-	rootCmd.SetArgs([]string{"-c=10", "-H=false", "-s=true", "-t=4", tmpDir})
+	rootCmd.SetArgs([]string{"-c=10", tmpDir})
 	err = rootCmd.Execute()
 	if err == nil {
 		t.Fatalf("expected an error from directory scanner, got nil")
@@ -578,14 +548,51 @@ func TestRootCmd_LineTooLongError(t *testing.T) {
 	}
 }
 
+func TestRootCmd_DetectShortIf(t *testing.T) {
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+	rootCmd.SetArgs([]string{"-c=80", "testdata/short-if.go"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	output := bufOut.String()
+
+	expectedLine := "9: \tif v := math.Pow(x, n); v < lim { " +
+		"// if with a short statement"
+	if strings.Contains(output, expectedLine) == false {
+		t.Errorf("expected output to contain flagged short if, got:\n%s",
+			output)
+	}
+}
+
+func TestRootCmd_AllowShortIf(t *testing.T) {
+	bufOut := new(bytes.Buffer)
+	rootCmd.SetOut(bufOut)
+
+	rootCmd.SetArgs([]string{
+		"-c=80", "--allow-short-if", "testdata/short-if.go"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	output := bufOut.String()
+	if strings.Contains(output, "if with a short statement") {
+		t.Errorf("expected no short-if warnings when allow-short-if is set,"+
+			" got:\n%s", output)
+	}
+}
+
 func TestRootCmd_FilesWithMatches(t *testing.T) {
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
 
 	rootCmd.SetArgs([]string{
-		"-c=10", "-H=false", "-s=true", "-t=4", "-l=true",
-		"testdata/first.txt", "testdata/second.txt",
-	})
+		"-c=10", "-l", "testdata/first.txt", "testdata/second.txt"})
 
 	err := rootCmd.Execute()
 	if err != nil {

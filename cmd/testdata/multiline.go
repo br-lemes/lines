@@ -9,7 +9,7 @@ type Point struct {
 
 func main() {
 	text := fmt.Sprintf(
-		"Fragmented %s",
+		"Multiline %s",
 		"expression",
 	)
 

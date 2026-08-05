@@ -30,7 +30,7 @@ func main() {
 		return commandName, nil
 	}
 
-	result, err := runner("lines", []string{"--skip-signatures"}, 30)
+	result, err := runner("lines", []string{"--check-signatures"}, 30)
 	if err == nil {
 		fmt.Println(result)
 	}
