@@ -1,13 +1,18 @@
 {
-    "ignorePaths": ["go.mod", "go.sum"],
-    "language": "en",
-    "words": [
-        "coverprofile",
-        "github",
-        "GOARCH",
-        "gocover",
-        "ldflags",
-        "lemes",
-        "linux"
-    ]
+	"ignorePaths": ["go.mod", "go.sum"],
+	"language": "en",
+	"words": [
+		"codeglyph",
+		"coverprofile",
+		"dotignore",
+		"github",
+		"GOARCH",
+		"gocover",
+		"ldflags",
+		"lemes",
+		"linesignore",
+		"linux",
+		"pflag",
+		"testdata"
+	]
 }

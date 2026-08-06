@@ -21,5 +21,9 @@ to disable this check.
 calls, assignments, literals, or binary operations) that were broken down into
 multiple lines but could completely fit within a single line limit. Use
 `--allow-multiline` to disable this check.
+- **Ignore Files Support (`.gitignore` & `.linesignore`)**: Automatically
+respects `.gitignore` and `.linesignore` rules when walking directories,
+ignoring files and folders specified in these files. You can disable this
+behavior with `--no-gitignore` and `--no-linesignore`.
 - **Pipeline Friendly**: Seamlessly accepts input from either a file argument or
 directly via standard input (`stdin`).

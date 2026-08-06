@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/codeglyph/go-dotignore/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,8 @@ type Analyzer struct {
 	columns          int
 	filesWithMatches bool
 	hidden           bool
+	noGitignore      bool
+	noLinesignore    bool
 	tabWidth         int
 }
 
@@ -46,6 +49,8 @@ Arguments:
 		columns, _ := cmd.Flags().GetInt("columns")
 		filesWithMatches, _ := cmd.Flags().GetBool("files-with-matches")
 		hidden, _ := cmd.Flags().GetBool("hidden")
+		noGitignore, _ := cmd.Flags().GetBool("no-gitignore")
+		noLinesignore, _ := cmd.Flags().GetBool("no-linesignore")
 		tabWidth, _ := cmd.Flags().GetInt("tab-width")
 
 		analyzer := Analyzer{
@@ -55,6 +60,8 @@ Arguments:
 			columns:          columns,
 			filesWithMatches: filesWithMatches,
 			hidden:           hidden,
+			noGitignore:      noGitignore,
+			noLinesignore:    noLinesignore,
 			tabWidth:         tabWidth,
 		}
 
@@ -125,6 +132,10 @@ func init() {
 		"print only names of files with lines exceeding the limit")
 	rootCmd.Flags().BoolP("hidden", "H", false,
 		"include hidden files and directories")
+	rootCmd.Flags().Bool("no-gitignore", false,
+		"do not respect .gitignore rules when scanning directories")
+	rootCmd.Flags().Bool("no-linesignore", false,
+		"do not respect .linesignore rules when scanning directories")
 	rootCmd.Flags().IntP("tab-width", "t", 4, "visual width of a tab character")
 }
 
@@ -132,8 +143,75 @@ func (a *Analyzer) NewAnalysis(filePath string, content []byte) *FileAnalysis {
 	return &FileAnalysis{analyzer: a, filePath: filePath, content: content}
 }
 
+func (a *Analyzer) loadIgnoreMatchers(dirPath string) (*dotignore.RepositoryMatcher, *dotignore.RepositoryMatcher, error) {
+	var err error
+	var gitMatcher *dotignore.RepositoryMatcher
+	if a.noGitignore == false {
+		config := &dotignore.RepositoryConfig{
+			IgnoreFileName: ".gitignore",
+			FollowSymlinks: false,
+			SkipFolders:    []string{".git"},
+		}
+		gitMatcher, err =
+			dotignore.NewRepositoryMatcherWithConfig(dirPath, config)
+		if err != nil { //+gocover:ignore:block should never happen
+			return nil, nil, err
+		}
+	}
+
+	var linesMatcher *dotignore.RepositoryMatcher
+	if a.noLinesignore == false {
+		config := &dotignore.RepositoryConfig{
+			IgnoreFileName: ".linesignore",
+			FollowSymlinks: false,
+			SkipFolders:    []string{".git"},
+		}
+		linesMatcher, err =
+			dotignore.NewRepositoryMatcherWithConfig(dirPath, config)
+		if err != nil { //+gocover:ignore:block should never happen
+			return nil, nil, err
+		}
+	}
+
+	return gitMatcher, linesMatcher, nil
+}
+
+func (a *Analyzer) isIgnored(path string, gitMatcher *dotignore.RepositoryMatcher, linesMatcher *dotignore.RepositoryMatcher) (bool, error) {
+	if gitMatcher != nil {
+		ignored, err := gitMatcher.Matches(path)
+		if err != nil { //+gocover:ignore:block should never happen
+			return false, err
+		}
+		if ignored {
+			return true, nil
+		}
+	}
+
+	if linesMatcher != nil {
+		ignored, err := linesMatcher.Matches(path)
+		if err != nil { //+gocover:ignore:block should never happen
+			return false, err
+		}
+		if ignored {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (a *Analyzer) ProcessDir(dirPath string, out io.Writer) error {
-	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, walkErr error) error {
+	gitMatcher, linesMatcher, err := a.loadIgnoreMatchers(dirPath)
+	if err != nil { //+gocover:ignore:block should never happen
+		return err
+	}
+
+	absRoot, err := filepath.Abs(dirPath)
+	if err != nil { //+gocover:ignore:block should never happen
+		return err
+	}
+
+	err = filepath.WalkDir(dirPath, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -151,6 +229,26 @@ func (a *Analyzer) ProcessDir(dirPath string, out io.Writer) error {
 					}
 					return nil
 				}
+			}
+		}
+
+		absPath, absErr := filepath.Abs(path)
+		if absErr != nil { //+gocover:ignore:block should never happen
+			return absErr
+		}
+
+		// Ignore rules apply to entries found during directory traversal,
+		// never to the scan root itself.
+		if absPath != absRoot {
+			ignored, ignoreErr := a.isIgnored(path, gitMatcher, linesMatcher)
+			if ignoreErr != nil { //+gocover:ignore:block should never happen
+				return ignoreErr
+			}
+			if ignored {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 		}
 
@@ -209,7 +307,7 @@ func (f *FileAnalysis) analyzeSignatures(ignoredLines map[int]bool) {
 func (f *FileAnalysis) analyzeGoSignatures(ignoredLines map[int]bool) {
 	fileSet := token.NewFileSet()
 	node, err := parser.ParseFile(fileSet, "", f.content, parser.ParseComments)
-	if err != nil { //+gocover:ignore:block should never happen
+	if err != nil {
 		return
 	}
 

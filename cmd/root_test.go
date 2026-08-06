@@ -2,16 +2,37 @@ package cmd
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
-func TestRootCmd_SingleFile(t *testing.T) {
+func resetRootCmd(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	rootCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		err := f.Value.Set(f.DefValue)
+		if err != nil {
+			t.Fatalf("failed to reset flag %q to default: %v", f.Name, err)
+		}
+		f.Changed = false
+	})
+
 	bufOut := new(bytes.Buffer)
 	rootCmd.SetOut(bufOut)
+	rootCmd.SetErr(io.Discard)
+	rootCmd.SetIn(nil)
+	rootCmd.SetArgs(nil)
 
+	return bufOut
+}
+
+func TestRootCmd_SingleFile(t *testing.T) {
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", "testdata/first.txt"})
 
 	err := rootCmd.Execute()
@@ -27,8 +48,7 @@ func TestRootCmd_SingleFile(t *testing.T) {
 }
 
 func TestRootCmd_MultipleFiles(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{
 		"-c=10", "testdata/first.txt", "testdata/second.txt"})
 
@@ -60,9 +80,7 @@ func TestRootCmd_MultipleFiles(t *testing.T) {
 }
 
 func TestRootCmd_Directory(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", "testdata/dir"})
 
 	err := rootCmd.Execute()
@@ -83,9 +101,7 @@ func TestRootCmd_Directory(t *testing.T) {
 }
 
 func TestRootCmd_Hidden_Disabled(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", "testdata/hidden"})
 
 	err := rootCmd.Execute()
@@ -106,9 +122,7 @@ func TestRootCmd_Hidden_Disabled(t *testing.T) {
 }
 
 func TestRootCmd_Hidden_Enabled(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", "-H=true", "testdata/hidden"})
 
 	err := rootCmd.Execute()
@@ -129,9 +143,7 @@ func TestRootCmd_Hidden_Enabled(t *testing.T) {
 }
 
 func TestRootCmd_Binary(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", "testdata/binary.dat"})
 
 	err := rootCmd.Execute()
@@ -183,8 +195,7 @@ func TestRootCmd_GoSignatures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bufOut := new(bytes.Buffer)
-			rootCmd.SetOut(bufOut)
+			bufOut := resetRootCmd(t)
 			rootCmd.SetArgs(tt.args)
 
 			err := rootCmd.Execute()
@@ -234,8 +245,7 @@ func TestRootCmd_TabWidth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bufOut := new(bytes.Buffer)
-			rootCmd.SetOut(bufOut)
+			bufOut := resetRootCmd(t)
 
 			rootCmd.SetArgs([]string{
 				"-c=10", "-t=" + tt.tabWidth, "testdata/tab_width.txt"})
@@ -302,8 +312,7 @@ func TestRootCmd_Symlink(t *testing.T) {
 		t.Skipf("symlinks not supported on this OS: %v", err)
 	}
 
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", tmpDir})
 
 	err = rootCmd.Execute()
@@ -326,7 +335,7 @@ func TestRootCmd_Symlink(t *testing.T) {
 		t.Errorf("expected directory symlink to be skipped, got:\n%s", output)
 	}
 
-	bufOut.Reset()
+	bufOut = resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", symlinkFile})
 
 	err = rootCmd.Execute()
@@ -341,9 +350,7 @@ func TestRootCmd_Symlink(t *testing.T) {
 }
 
 func TestRootCmd_NoInputError(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", "-t=4"})
 
 	err := rootCmd.Execute()
@@ -361,14 +368,8 @@ func TestRootCmd_NoInputError(t *testing.T) {
 func TestRootCmd_Stdin(t *testing.T) {
 	inputCode := "line\n"
 
-	bufIn := bytes.NewBufferString(inputCode)
-	bufOut := new(bytes.Buffer)
-	bufErr := new(bytes.Buffer)
-
-	rootCmd.SetIn(bufIn)
-	rootCmd.SetOut(bufOut)
-	rootCmd.SetErr(bufErr)
-
+	bufOut := resetRootCmd(t)
+	rootCmd.SetIn(bytes.NewBufferString(inputCode))
 	rootCmd.SetArgs([]string{"-c=2", "-t=4"})
 
 	err := rootCmd.Execute()
@@ -384,8 +385,7 @@ func TestRootCmd_Stdin(t *testing.T) {
 }
 
 func TestRootCmd_DetectMultiline(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=80", "testdata/multiline.go"})
 
 	err := rootCmd.Execute()
@@ -419,9 +419,7 @@ func TestRootCmd_DetectMultiline(t *testing.T) {
 }
 
 func TestRootCmd_AllowMultiline(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{
 		"-c=80", "--allow-multiline", "testdata/multiline.go"})
 
@@ -438,9 +436,7 @@ func TestRootCmd_AllowMultiline(t *testing.T) {
 }
 
 func TestRootCmd_LstatError(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	resetRootCmd(t)
 	rootCmd.SetArgs([]string{
 		"-c=10", filepath.Join("testdata", "this_file_does_not_exist.go")})
 
@@ -467,8 +463,7 @@ func TestRootCmd_WalkDirError(t *testing.T) {
 		t.Fatalf("failed to create unreadable dir: %v", err)
 	}
 
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
+	resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", tmpDir})
 
 	err = rootCmd.Execute()
@@ -494,8 +489,7 @@ func TestRootCmd_ReadFilePermissionError(t *testing.T) {
 		t.Fatalf("failed to create unreadable file: %v", err)
 	}
 
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
+	resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", tmpFile})
 
 	err = rootCmd.Execute()
@@ -522,11 +516,8 @@ func TestRootCmd_LineTooLongError(t *testing.T) {
 		t.Fatalf("failed to create huge file: %v", err)
 	}
 
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
-	stdinBuffer := bytes.NewBufferString(hugeLine)
-	rootCmd.SetIn(stdinBuffer)
+	resetRootCmd(t)
+	rootCmd.SetIn(bytes.NewBufferString(hugeLine))
 	rootCmd.SetArgs([]string{"-c=10", "-t=4"})
 	err = rootCmd.Execute()
 	if err == nil {
@@ -536,8 +527,7 @@ func TestRootCmd_LineTooLongError(t *testing.T) {
 		t.Errorf("expected 'token too long' error, got: %v", err)
 	}
 
-	bufOut.Reset()
-	rootCmd.SetOut(bufOut)
+	resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=10", tmpDir})
 	err = rootCmd.Execute()
 	if err == nil {
@@ -549,8 +539,7 @@ func TestRootCmd_LineTooLongError(t *testing.T) {
 }
 
 func TestRootCmd_DetectShortIf(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{"-c=80", "testdata/short-if.go"})
 
 	err := rootCmd.Execute()
@@ -569,9 +558,7 @@ func TestRootCmd_DetectShortIf(t *testing.T) {
 }
 
 func TestRootCmd_AllowShortIf(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{
 		"-c=80", "--allow-short-if", "testdata/short-if.go"})
 
@@ -588,9 +575,7 @@ func TestRootCmd_AllowShortIf(t *testing.T) {
 }
 
 func TestRootCmd_FilesWithMatches(t *testing.T) {
-	bufOut := new(bytes.Buffer)
-	rootCmd.SetOut(bufOut)
-
+	bufOut := resetRootCmd(t)
 	rootCmd.SetArgs([]string{
 		"-c=10", "-l", "testdata/first.txt", "testdata/second.txt"})
 
@@ -617,5 +602,118 @@ func TestRootCmd_FilesWithMatches(t *testing.T) {
 	if strings.Contains(output, unexpectedLine) {
 		t.Errorf("expected output NOT to contain line contents when -l is set,"+
 			" got:\n%s", output)
+	}
+}
+
+func TestRootCmd_GitignoreAndLinesignoreCombined(t *testing.T) {
+	tests := []struct {
+		name               string
+		args               []string
+		expectGitIgnored   bool
+		expectLinesIgnored bool
+	}{
+		{
+			name:               "Both Enabled",
+			args:               []string{"-c=10", "testdata/ignore-combo"},
+			expectGitIgnored:   false,
+			expectLinesIgnored: false,
+		},
+		{
+			name: "Gitignore Disabled",
+			args: []string{
+				"-c=10", "--no-gitignore", "testdata/ignore-combo"},
+			expectGitIgnored:   true,
+			expectLinesIgnored: false,
+		},
+		{
+			name: "Linesignore Disabled",
+			args: []string{
+				"-c=10", "--no-linesignore", "testdata/ignore-combo"},
+			expectGitIgnored:   false,
+			expectLinesIgnored: true,
+		},
+		{
+			name: "Both Disabled",
+			args: []string{
+				"-c=10", "--no-gitignore", "--no-linesignore",
+				"testdata/ignore-combo"},
+			expectGitIgnored:   true,
+			expectLinesIgnored: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bufOut := resetRootCmd(t)
+			rootCmd.SetArgs(tt.args)
+
+			err := rootCmd.Execute()
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			output := bufOut.String()
+
+			hasGitIgnored := strings.Contains(
+				output, "testdata/ignore-combo/git-ignored.txt")
+			if hasGitIgnored != tt.expectGitIgnored {
+				t.Errorf("git-ignored.txt presence mismatch, got:\n%s", output)
+			}
+
+			hasLinesIgnored := strings.Contains(
+				output, "testdata/ignore-combo/lines-ignored.txt")
+			if hasLinesIgnored != tt.expectLinesIgnored {
+				t.Errorf("lines-ignored.txt presence mismatch, got:\n%s",
+					output)
+			}
+
+			if strings.Contains(
+				output, "testdata/ignore-combo/normal.txt") == false {
+				t.Errorf("expected normal.txt to always be processed, got:\n%s",
+					output)
+			}
+		})
+	}
+}
+
+func TestRootCmd_ExplicitFileBypassesIgnore(t *testing.T) {
+	bufOut := resetRootCmd(t)
+	rootCmd.SetArgs([]string{
+		"-c=10", "testdata/ignore-explicit/explicit.txt"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	output := bufOut.String()
+
+	if strings.Contains(
+		output, "testdata/ignore-explicit/explicit.txt") == false {
+		t.Errorf(
+			"expected an explicit file argument to bypass .gitignore, got:\n%s",
+			output)
+	}
+}
+
+func TestRootCmd_GitignoreSkipsDirectory(t *testing.T) {
+	bufOut := resetRootCmd(t)
+	rootCmd.SetArgs([]string{"-c=10", "testdata/ignore-skip-dir"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	output := bufOut.String()
+
+	if strings.Contains(output, "testdata/ignore-skip-dir/kept.txt") == false {
+		t.Errorf("expected non-ignored file to be processed, got:\n%s", output)
+	}
+
+	if strings.Contains(output, "skipped") {
+		t.Errorf(
+			"expected an ignored directory to be pruned entirely, got:\n%s",
+			output)
 	}
 }
